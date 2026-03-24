@@ -1,5 +1,6 @@
 site: apple-podcasts
 name: top
+domain: rss.marketingtools.apple.com
 description: Top podcasts chart on Apple Podcasts
 strategy: public
 browser: false

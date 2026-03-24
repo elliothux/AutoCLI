@@ -19,7 +19,6 @@ pipeline:
   - map:
       username: ${{ item.id }}
       karma: ${{ item.karma }}
-      created: "${{ item.created ? new Date(item.created * 1000).toISOString().slice(0, 10) : '' }}"
       about: ${{ item.about }}
 
 columns: [username, karma, created, about]

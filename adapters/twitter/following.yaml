@@ -17,44 +17,55 @@ args:
 columns: [screen_name, name, bio, followers]
 
 pipeline:
+  # Step 1: Navigate to home to detect logged-in user
   - navigate:
       url: https://x.com/home
       settleMs: 5000
 
+  # Step 2: Determine target user
   - evaluate: |
-      (async () => {
-        const targetUser = ${{ args.user | json }};
+      (() => {
+        const targetUser = (args.user || '').replace(/^@/, '');
         if (targetUser) return targetUser;
         const link = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
-        if (!link) throw new Error('Could not find logged-in user profile link. Are you logged in?');
+        if (!link) throw new Error('Could not detect logged-in user. Are you logged in?');
         return link.getAttribute('href').replace('/', '');
       })()
 
+  # Step 3: Navigate to profile page
   - navigate:
-      url: https://x.com/${{ data }}
+      url: "https://x.com/${{ data }}"
       settleMs: 3000
 
+  # Step 4: Install interceptor for Following API
   - intercept:
       pattern: Following
+      collect: false
 
+  # Step 5: Click the following link (SPA navigation, preserves interceptor)
   - evaluate: |
-      (() => {
-        const target = ${{ data | json }};
+      (async () => {
+        const target = data;
         const link = document.querySelector('a[href="/' + target + '/following"]');
         if (link) { link.click(); return true; }
-        throw new Error('Could not find following link on profile page.');
+        // Fallback: try navigating directly via SPA
+        window.location.href = 'https://x.com/' + target + '/following';
+        return true;
       })()
 
+  # Step 6: Wait for content to load
   - wait: 5
 
+  # Step 7: Scroll to trigger pagination
   - scroll:
-      times: ${{ (args.limit / 20) | round(0, 'ceil') | int }}
-      delayMs: 2000
+      count: 3
+      delay: 2000
 
+  # Step 8: Collect and parse intercepted requests
   - collect:
       parse: |
         (requests) => {
-          let results = [];
+          const results = [];
           const seen = new Map();
           for (const req of requests) {
             try {
@@ -76,11 +87,11 @@ pipeline:
                     screen_name: sn,
                     name: core.name || legacy.name || 'unknown',
                     bio: legacy.description || item.profile_bio?.description || '',
-                    followers: legacy.followers_count || legacy.normal_followers_count || 0,
+                    followers: legacy.followers_count || legacy.normal_followers_count || 0
                   });
                 }
               }
-            } catch (e) {}
+            } catch {}
           }
           return results;
         }

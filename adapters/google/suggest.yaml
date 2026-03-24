@@ -1,5 +1,6 @@
 site: google
 name: suggest
+domain: suggestqueries.google.com
 description: Get Google search suggestions
 strategy: public
 browser: false

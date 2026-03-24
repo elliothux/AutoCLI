@@ -142,22 +142,28 @@ pub fn install_interceptor_js(pattern: &str) -> String {
   const regex = new RegExp('{pat}');
   const origFetch = window.fetch;
   window.fetch = async function(...args) {{
-    const req = new Request(...args);
-    const url = req.url;
-    if (regex.test(url)) {{
-      const body = await req.clone().text().catch(() => null);
-      window.__opencli_intercepted.push({{
-        url, method: req.method,
-        headers: Object.fromEntries(req.headers.entries()),
-        body,
-      }});
-    }}
-    return origFetch.apply(this, args);
+    const resp = await origFetch.apply(this, args);
+    try {{
+      const url = typeof args[0] === 'string' ? args[0]
+        : (args[0] instanceof Request ? args[0].url : String(args[0]));
+      if (regex.test(url)) {{
+        try {{
+          const json = await resp.clone().json();
+          window.__opencli_intercepted.push(json);
+        }} catch {{
+          window.__opencli_intercepted.push({{
+            url, method: (args[0]?.method || 'GET'),
+            body: await resp.clone().text().catch(() => null),
+          }});
+        }}
+      }}
+    }} catch {{}}
+    return resp;
   }};
   const origXhr = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url, ...rest) {{
-    if (regex.test(url)) {{
-      this.__opencli_url = url;
+    if (regex.test(String(url))) {{
+      this.__opencli_url = String(url);
       this.__opencli_method = method;
     }}
     return origXhr.call(this, method, url, ...rest);
@@ -165,9 +171,15 @@ pub fn install_interceptor_js(pattern: &str) -> String {
   const origSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function(body) {{
     if (this.__opencli_url) {{
-      window.__opencli_intercepted.push({{
-        url: this.__opencli_url, method: this.__opencli_method,
-        headers: {{}}, body: typeof body === 'string' ? body : null,
+      this.addEventListener('load', function() {{
+        try {{
+          window.__opencli_intercepted.push(JSON.parse(this.responseText));
+        }} catch {{
+          window.__opencli_intercepted.push({{
+            url: this.__opencli_url,
+            body: this.responseText,
+          }});
+        }}
       }});
     }}
     return origSend.call(this, body);

@@ -1,5 +1,6 @@
 site: wikipedia
 name: trending
+domain: en.wikipedia.org
 description: Most-read Wikipedia articles (yesterday)
 strategy: public
 browser: false

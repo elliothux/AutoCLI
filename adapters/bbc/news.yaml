@@ -1,7 +1,7 @@
 site: bbc
 name: news
 description: BBC News headlines (RSS)
-domain: www.bbc.com
+domain: feeds.bbci.co.uk
 strategy: public
 browser: false
 

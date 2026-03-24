@@ -1,5 +1,6 @@
 site: google
 name: news
+domain: news.google.com
 description: Get Google News headlines
 strategy: public
 browser: false

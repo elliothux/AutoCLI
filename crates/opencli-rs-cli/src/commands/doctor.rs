@@ -7,9 +7,21 @@ pub async fn run_doctor() {
     println!();
 
     // 1. Check Chrome/Chromium installed
-    let chrome = is_binary_installed("google-chrome")
-        || is_binary_installed("chromium")
-        || is_binary_installed("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+    let chrome = if cfg!(target_os = "macos") {
+        is_binary_installed("google-chrome")
+            || is_binary_installed("chromium")
+            || std::path::Path::new("/Applications/Google Chrome.app").exists()
+    } else if cfg!(target_os = "windows") {
+        std::path::Path::new(r"C:\Program Files\Google\Chrome\Application\chrome.exe").exists()
+            || std::path::Path::new(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe").exists()
+            || is_binary_installed("chrome")
+    } else {
+        // Linux
+        is_binary_installed("google-chrome")
+            || is_binary_installed("google-chrome-stable")
+            || is_binary_installed("chromium")
+            || is_binary_installed("chromium-browser")
+    };
     print_check("Chrome/Chromium", chrome);
 
     // 2. Check daemon reachable

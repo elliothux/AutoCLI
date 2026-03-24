@@ -1,5 +1,6 @@
 site: arxiv
 name: paper
+domain: export.arxiv.org
 description: Get arXiv paper details by ID
 strategy: public
 browser: false

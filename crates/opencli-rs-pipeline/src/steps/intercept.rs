@@ -35,32 +35,27 @@ impl StepHandler for InterceptStep {
             .clone()
             .ok_or_else(|| CliError::pipeline("intercept: requires an active page"))?;
 
-        let (pattern, wait_ms) = match params {
+        let ctx = TemplateContext {
+            args: args.clone(),
+            data: data.clone(),
+            item: Value::Null,
+            index: 0,
+        };
+
+        let (pattern, wait_ms, install_only) = match params {
             Value::String(s) => {
-                let ctx = TemplateContext {
-                    args: args.clone(),
-                    data: data.clone(),
-                    item: Value::Null,
-                    index: 0,
-                };
                 let rendered = render_template_str(s, &ctx)?;
                 let pat = rendered
                     .as_str()
                     .ok_or_else(|| CliError::pipeline("intercept: pattern must resolve to a string"))?
                     .to_string();
-                (pat, 5000u64)
+                (pat, 5000u64, false)
             }
             Value::Object(obj) => {
                 let pat_raw = obj
                     .get("pattern")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| CliError::pipeline("intercept: missing 'pattern' field"))?;
-                let ctx = TemplateContext {
-                    args: args.clone(),
-                    data: data.clone(),
-                    item: Value::Null,
-                    index: 0,
-                };
                 let rendered = render_template_str(pat_raw, &ctx)?;
                 let pat = rendered
                     .as_str()
@@ -68,9 +63,16 @@ impl StepHandler for InterceptStep {
                     .to_string();
                 let wait = obj
                     .get("wait")
-                    .and_then(|v| v.as_u64())
+                    .and_then(|v| v.as_f64())
+                    .map(|s| (s * 1000.0) as u64)
                     .unwrap_or(5000);
-                (pat, wait)
+                // If collect: false, only install the interceptor without waiting/collecting
+                let install_only = obj
+                    .get("collect")
+                    .and_then(|v| v.as_bool())
+                    .map(|b| !b)
+                    .unwrap_or(false);
+                (pat, wait, install_only)
             }
             _ => {
                 return Err(CliError::pipeline(
@@ -81,6 +83,11 @@ impl StepHandler for InterceptStep {
 
         // Install the interceptor
         pg.intercept_requests(&pattern).await?;
+
+        // If install-only mode, return data unchanged (collect step will handle later)
+        if install_only {
+            return Ok(data.clone());
+        }
 
         // Wait for the specified duration to capture requests
         pg.wait_for_timeout(wait_ms).await?;

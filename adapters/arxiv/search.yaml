@@ -1,5 +1,6 @@
 site: arxiv
 name: search
+domain: export.arxiv.org
 description: Search arXiv papers
 strategy: public
 browser: false

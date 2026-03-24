@@ -324,7 +324,18 @@ impl StepHandler for EvaluateStep {
     ) -> Result<Value, CliError> {
         let pg = require_page(&page)?;
         let js = render_str_param(params, data, args)?;
-        let result = pg.evaluate(&js).await?;
+
+        // Inject `args` and `data` as local variables so JS code can reference them
+        // directly (e.g. `args.query`, `args.limit`) without ${{ }} template syntax.
+        // This matches the original opencli behavior.
+        let args_json = serde_json::to_string(args).unwrap_or("{}".to_string());
+        let data_json = serde_json::to_string(data).unwrap_or("null".to_string());
+        let wrapped_js = format!(
+            "(function() {{ const args = {}; const data = {}; return ({}); }})()",
+            args_json, data_json, js
+        );
+
+        let result = pg.evaluate(&wrapped_js).await?;
         Ok(result)
     }
 }
@@ -533,7 +544,7 @@ impl StepHandler for CollectStep {
         page: Option<Arc<dyn IPage>>,
         params: &Value,
         _data: &Value,
-        _args: &HashMap<String, Value>,
+        args: &HashMap<String, Value>,
     ) -> Result<Value, CliError> {
         let pg = require_page(&page)?;
 
@@ -543,15 +554,17 @@ impl StepHandler for CollectStep {
             .and_then(|v| v.as_str())
             .ok_or_else(|| CliError::pipeline("collect step requires a 'parse' field with a JS function"))?;
 
-        // Get intercepted requests
-        let requests = pg.get_intercepted_requests().await?;
-        let requests_json = serde_json::to_string(&requests)
-            .map_err(|e| CliError::pipeline(format!("Failed to serialize intercepted requests: {e}")))?;
-
-        // Execute the parse function in browser with the intercepted requests
+        // Get intercepted data directly from browser (raw JSON, not typed structs)
+        // and run the parse function on it — all in one evaluate call.
+        let args_json = serde_json::to_string(args).unwrap_or("{}".to_string());
         let js = format!(
-            "(() => {{ const parseFn = {}; const requests = {}; return parseFn(requests); }})()",
-            parse_fn, requests_json
+            r#"(() => {{
+  const args = {args_json};
+  const requests = window.__opencli_intercepted || [];
+  window.__opencli_intercepted = [];
+  const parseFn = {parse_fn};
+  return parseFn(requests);
+}})()"#
         );
 
         pg.evaluate(&js).await

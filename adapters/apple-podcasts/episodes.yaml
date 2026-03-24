@@ -1,5 +1,6 @@
 site: apple-podcasts
 name: episodes
+domain: itunes.apple.com
 description: List recent episodes of an Apple Podcast (use ID from search)
 strategy: public
 browser: false

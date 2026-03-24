@@ -7,8 +7,12 @@ const DANGEROUS_PATTERNS: &[&str] = &["&&", "||", "|", ";", "$(", "`", ">", "<",
 
 /// Check whether the given binary is available on the system PATH.
 pub fn is_binary_installed(binary: &str) -> bool {
-    // Use `which` on Unix-like systems
-    std::process::Command::new("which")
+    let cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+    std::process::Command::new(cmd)
         .arg(binary)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -119,8 +123,12 @@ mod tests {
 
     #[test]
     fn test_is_binary_installed_known() {
-        // `ls` should always exist
-        assert!(is_binary_installed("ls"));
+        // A command that exists on all platforms
+        if cfg!(target_os = "windows") {
+            assert!(is_binary_installed("cmd"));
+        } else {
+            assert!(is_binary_installed("ls"));
+        }
     }
 
     #[test]

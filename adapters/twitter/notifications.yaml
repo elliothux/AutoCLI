@@ -19,6 +19,7 @@ pipeline:
 
   - intercept:
       pattern: NotificationsTimeline
+      collect: false
 
   - evaluate: |
       (() => {

@@ -1,5 +1,6 @@
 site: apple-podcasts
 name: search
+domain: itunes.apple.com
 description: Search Apple Podcasts
 strategy: public
 browser: false

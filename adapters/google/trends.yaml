@@ -1,5 +1,6 @@
 site: google
 name: trends
+domain: trends.google.com
 description: Get Google Trends daily trending searches
 strategy: public
 browser: false

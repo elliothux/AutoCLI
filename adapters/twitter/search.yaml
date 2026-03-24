@@ -23,6 +23,7 @@ pipeline:
 
   - intercept:
       pattern: SearchTimeline
+      collect: false
 
   - evaluate: |
       (() => {

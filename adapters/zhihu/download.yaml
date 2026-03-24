@@ -1,0 +1,28 @@
+site: zhihu
+name: download
+description: 导出知乎文章为 Markdown 格式
+domain: www.zhihu.com
+strategy: cookie
+browser: true
+
+args:
+  url:
+    type: str
+    required: true
+    positional: true
+    description: "Article or answer URL"
+
+columns: [title, author, content]
+
+pipeline:
+  - navigate:
+      url: ${{ args.url }}
+      settleMs: 3000
+  - evaluate: |
+      (() => {
+        const title = document.querySelector('.Post-Title, h1.ContentItem-title, .ArticleTitle, .QuestionHeader-title')?.textContent?.trim() || 'untitled';
+        const author = document.querySelector('.AuthorInfo-name, .UserLink-link, .AnswerItem .AuthorInfo a')?.textContent?.trim() || 'unknown';
+        const contentEl = document.querySelector('.Post-RichTextContainer, .RichContent-inner, .RichText');
+        const content = contentEl?.innerText?.trim()?.slice(0, 2000) || '';
+        return [{ title, author, content }];
+      })()

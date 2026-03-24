@@ -23,7 +23,7 @@ args:
 
 pipeline:
   - fetch:
-      url: "https://hn.algolia.com/api/v1/${{ args.sort === 'date' ? 'search_by_date' : 'search' }}"
+      url: "https://hn.algolia.com/api/v1/${{ args.sort == 'date' ? 'search_by_date' : 'search' }}"
       params:
         query: ${{ args.query }}
         tags: story

@@ -30,22 +30,29 @@ pipeline:
       settleMs: 3000
 
   - evaluate: |
-      (async () => {
+      (() => {
         const username = ${{ args.username | json }};
         const tweetUrl = ${{ args['tweet-url'] | json }};
-        const limit = ${{ args.limit }};
 
         if (!username && !tweetUrl) {
-          return [{ index: 0, type: '-', status: 'failed', size: 'Must provide a username or --tweet-url' }];
+          throw new Error('Must provide a username or --tweet-url');
         }
 
-        // Navigate to appropriate page
         if (tweetUrl) {
-          window.location.href = tweetUrl;
+          return tweetUrl;
         } else {
-          window.location.href = 'https://x.com/' + username + '/media';
+          return 'https://x.com/' + username + '/media';
         }
-        await new Promise(r => setTimeout(r, 3000));
+      })()
+
+  - navigate:
+      url: ${{ data }}
+      settleMs: 5000
+
+  - evaluate: |
+      (async () => {
+        const tweetUrl = ${{ args['tweet-url'] | json }};
+        const limit = ${{ args.limit }};
 
         // Scroll to load more content
         if (!tweetUrl) {

@@ -112,9 +112,16 @@ impl StepHandler for MapStep {
         data: &Value,
         args: &HashMap<String, Value>,
     ) -> Result<Value, CliError> {
-        let arr = data
-            .as_array()
-            .ok_or_else(|| CliError::pipeline("map: data must be an array"))?;
+        // Auto-wrap single objects into an array
+        let owned_arr;
+        let arr = match data.as_array() {
+            Some(a) => a,
+            None if data.is_object() => {
+                owned_arr = vec![data.clone()];
+                &owned_arr
+            }
+            _ => return Err(CliError::pipeline("map: data must be an array or object")),
+        };
 
         let template = params;
         let mut results = Vec::with_capacity(arr.len());
@@ -295,9 +302,16 @@ impl StepHandler for LimitStep {
         data: &Value,
         args: &HashMap<String, Value>,
     ) -> Result<Value, CliError> {
-        let arr = data
-            .as_array()
-            .ok_or_else(|| CliError::pipeline("limit: data must be an array"))?;
+        // Auto-wrap single objects into an array
+        let owned_arr;
+        let arr = match data.as_array() {
+            Some(a) => a,
+            None if data.is_object() => {
+                owned_arr = vec![data.clone()];
+                &owned_arr
+            }
+            _ => return Err(CliError::pipeline("limit: data must be an array or object")),
+        };
 
         let n = match params {
             Value::Number(n) => n

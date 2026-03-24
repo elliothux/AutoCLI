@@ -7,7 +7,7 @@ browser: true
 
 args:
   topic:
-    default: ""
+    default: technology
     description: 话题标签（如 technology, programming, ai）
   limit:
     type: int
@@ -15,14 +15,13 @@ args:
     description: 返回的文章数量
 
 pipeline:
-  - evaluate: |
-      (async () => {
-        const topic = '${{ args.topic }}';
-        const url = topic ? 'https://medium.com/tag/' + encodeURIComponent(topic) : 'https://medium.com/tag/technology';
-        location.href = url;
-        await new Promise(r => setTimeout(r, 8000));
+  - navigate:
+      url: "https://medium.com/tag/${{ args.topic | urlencode }}"
+      settleMs: 5000
 
-        const limit = Math.max(1, Math.min(${{ args.limit }} || 20, 50));
+  - evaluate: |
+      (() => {
+        const limit = Math.max(1, Math.min(args.limit || 20, 50));
         const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
         const posts = [];
         const seen = new Set();
