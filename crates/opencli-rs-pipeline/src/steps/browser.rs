@@ -404,6 +404,89 @@ impl StepHandler for ScreenshotStep {
 }
 
 // ---------------------------------------------------------------------------
+// ScrollStep
+// ---------------------------------------------------------------------------
+
+pub struct ScrollStep;
+
+#[async_trait]
+impl StepHandler for ScrollStep {
+    fn name(&self) -> &'static str {
+        "scroll"
+    }
+
+    fn is_browser_step(&self) -> bool {
+        true
+    }
+
+    async fn execute(
+        &self,
+        page: Option<Arc<dyn IPage>>,
+        params: &Value,
+        data: &Value,
+        args: &HashMap<String, Value>,
+    ) -> Result<Value, CliError> {
+        let pg = require_page(&page)?;
+
+        match params {
+            // scroll: 3  (number of scrolls)
+            Value::Number(n) => {
+                let count = n.as_u64().unwrap_or(3) as u32;
+                pg.auto_scroll(Some(opencli_rs_core::AutoScrollOptions {
+                    max_scrolls: Some(count),
+                    delay_ms: Some(300),
+                    ..Default::default()
+                }))
+                .await?;
+            }
+            // scroll: { direction: "down", count: 5, delay: 500 }
+            Value::Object(obj) => {
+                let count = obj
+                    .get("count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(3) as u32;
+                let delay = obj
+                    .get("delay")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(300);
+                pg.auto_scroll(Some(opencli_rs_core::AutoScrollOptions {
+                    max_scrolls: Some(count),
+                    delay_ms: Some(delay),
+                    ..Default::default()
+                }))
+                .await?;
+            }
+            // scroll: "down" or template string
+            Value::String(_) => {
+                let ctx = default_ctx(data, args);
+                let rendered = render_template_str(
+                    params.as_str().unwrap_or("3"),
+                    &ctx,
+                )?;
+                let count = rendered.as_u64().or_else(|| rendered.as_str().and_then(|s| s.parse().ok())).unwrap_or(3) as u32;
+                pg.auto_scroll(Some(opencli_rs_core::AutoScrollOptions {
+                    max_scrolls: Some(count),
+                    delay_ms: Some(300),
+                    ..Default::default()
+                }))
+                .await?;
+            }
+            // scroll: null → default 3 scrolls
+            _ => {
+                pg.auto_scroll(Some(opencli_rs_core::AutoScrollOptions {
+                    max_scrolls: Some(3),
+                    delay_ms: Some(300),
+                    ..Default::default()
+                }))
+                .await?;
+            }
+        }
+
+        Ok(data.clone())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -416,6 +499,7 @@ pub fn register_browser_steps(registry: &mut StepRegistry) {
     registry.register(Arc::new(EvaluateStep));
     registry.register(Arc::new(SnapshotStep));
     registry.register(Arc::new(ScreenshotStep));
+    registry.register(Arc::new(ScrollStep));
 }
 
 // ---------------------------------------------------------------------------
