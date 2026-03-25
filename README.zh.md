@@ -90,10 +90,16 @@ cp target/release/opencli-rs /usr/local/bin/   # macOS / Linux
 
 重新运行安装命令或下载最新版本覆盖即可。
 
-### 环境要求
+### Chrome 扩展安装（浏览器命令需要）
 
-- Chrome/Chromium + [OpenCLI 扩展](https://github.com/jackwener/opencli)（浏览器命令需要）
-- 纯 Public API 命令（hackernews、devto、lobsters 等）无需 Chrome
+1. 从 [GitHub Releases](https://github.com/nashsu/opencli-rs/releases/latest) 下载 `opencli-rs-chrome-extension.zip`
+2. 解压到任意目录
+3. 打开 Chrome，访问 `chrome://extensions`
+4. 开启右上角「开发者模式」
+5. 点击「加载已解压的扩展程序」，选择解压后的文件夹
+6. 扩展安装后会自动连接 opencli-rs daemon
+
+> Public 模式命令（hackernews、devto、lobsters 等）无需安装扩展即可使用。
 
 ## 快速开始
 

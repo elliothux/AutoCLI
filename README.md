@@ -92,10 +92,16 @@ cp target/release/opencli-rs /usr/local/bin/   # macOS / Linux
 
 Simply re-run the install command or download the latest release to overwrite the existing binary.
 
-### Requirements
+### Chrome Extension Setup (required for browser commands)
 
-- Chrome/Chromium + [OpenCLI Extension](https://github.com/jackwener/opencli) (required for browser commands)
-- Pure Public API commands (hackernews, devto, lobsters, etc.) do not require Chrome
+1. Download `opencli-rs-chrome-extension.zip` from [GitHub Releases](https://github.com/nashsu/opencli-rs/releases/latest)
+2. Extract to any directory
+3. Open Chrome and go to `chrome://extensions`
+4. Enable "Developer mode" (top right toggle)
+5. Click "Load unpacked" and select the extracted folder
+6. The extension will automatically connect to the opencli-rs daemon
+
+> Public mode commands (hackernews, devto, lobsters, etc.) work without the extension.
 
 ## Quick Start
 

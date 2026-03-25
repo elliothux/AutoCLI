@@ -89,10 +89,16 @@ cp target/release/opencli-rs /usr/local/bin/   # macOS / Linux
 
 インストールコマンドを再実行するか、最新バージョンをダウンロードして上書きしてください。
 
-### 環境要件
+### Chrome 拡張機能のインストール（ブラウザコマンドに必要）
 
-- Chrome/Chromium + [OpenCLI 拡張機能](https://github.com/jackwener/opencli)（ブラウザコマンドに必要）
-- 純粋な Public API コマンド（hackernews、devto、lobsters など）は Chrome 不要
+1. [GitHub Releases](https://github.com/nashsu/opencli-rs/releases/latest) から `opencli-rs-chrome-extension.zip` をダウンロード
+2. 任意のディレクトリに解凍
+3. Chrome を開き、`chrome://extensions` にアクセス
+4. 右上の「デベロッパーモード」を有効化
+5. 「パッケージ化されていない拡張機能を読み込む」をクリックし、解凍したフォルダを選択
+6. 拡張機能は自動的に opencli-rs daemon に接続されます
+
+> Public モードのコマンド（hackernews、devto、lobsters など）は拡張機能なしで使用できます。
 
 ## クイックスタート
 
