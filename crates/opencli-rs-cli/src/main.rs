@@ -98,23 +98,25 @@ fn build_cli(registry: &Registry, external_clis: &[ExternalCli]) -> Command {
         )
         .subcommand(
             Command::new("explore")
-                .about("AI-driven exploration of a website")
-                .arg(Arg::new("url").required(true).help("URL to explore")),
-        )
-        .subcommand(
-            Command::new("synthesize")
-                .about("AI-synthesize a new adapter from a URL")
-                .arg(Arg::new("url").required(true).help("URL to synthesize from")),
+                .about("Explore a website's API surface and discover endpoints")
+                .arg(Arg::new("url").required(true).help("URL to explore"))
+                .arg(Arg::new("site").long("site").help("Override site name"))
+                .arg(Arg::new("goal").long("goal").help("Hint for capability naming (e.g. search, hot)"))
+                .arg(Arg::new("wait").long("wait").default_value("3").help("Initial wait seconds"))
+                .arg(Arg::new("auto").long("auto").action(ArgAction::SetTrue).help("Enable interactive fuzzing (click buttons/tabs to trigger hidden APIs)"))
+                .arg(Arg::new("click").long("click").help("Comma-separated labels to click before fuzzing (e.g. 'Comments,CC,字幕')")),
         )
         .subcommand(
             Command::new("cascade")
-                .about("Run a cascade of AI commands")
-                .arg(Arg::new("prompt").required(true).help("Natural language prompt")),
+                .about("Auto-detect authentication strategy for an API endpoint")
+                .arg(Arg::new("url").required(true).help("API endpoint URL to probe")),
         )
         .subcommand(
             Command::new("generate")
-                .about("Generate adapter YAML from a prompt")
-                .arg(Arg::new("prompt").required(true).help("Natural language prompt")),
+                .about("One-shot: explore + synthesize + select best adapter")
+                .arg(Arg::new("url").required(true).help("URL to generate adapter for"))
+                .arg(Arg::new("goal").long("goal").help("What you want (e.g. hot, search, trending)"))
+                .arg(Arg::new("site").long("site").help("Override site name")),
         );
 
     app
@@ -224,9 +226,111 @@ async fn main() {
                 completion::run_completion(&mut app, shell);
                 return;
             }
-            "explore" | "synthesize" | "cascade" | "generate" => {
-                eprintln!("AI command '{}' is not yet implemented.", site_name);
-                std::process::exit(1);
+            "explore" => {
+                let url = site_matches.get_one::<String>("url").unwrap();
+                let site = site_matches.get_one::<String>("site").cloned();
+                let goal = site_matches.get_one::<String>("goal").cloned();
+                let wait: u64 = site_matches.get_one::<String>("wait")
+                    .and_then(|s| s.parse().ok()).unwrap_or(3);
+                let auto_fuzz = site_matches.get_flag("auto");
+                let click_labels: Vec<String> = site_matches.get_one::<String>("click")
+                    .map(|s| s.split(',').map(|l| l.trim().to_string()).collect())
+                    .unwrap_or_default();
+
+                let mut bridge = opencli_rs_browser::BrowserBridge::new(
+                    std::env::var("OPENCLI_DAEMON_PORT").ok()
+                        .and_then(|s| s.parse().ok()).unwrap_or(19825),
+                );
+                match bridge.connect().await {
+                    Ok(page) => {
+                        let options = opencli_rs_ai::ExploreOptions {
+                            timeout: Some(120),
+                            max_scrolls: Some(3),
+                            capture_network: Some(true),
+                            wait_seconds: Some(wait as f64),
+                            auto_fuzz: Some(auto_fuzz),
+                            click_labels,
+                            goal,
+                            site_name: site,
+                        };
+                        match opencli_rs_ai::explore(page.as_ref(), url, options).await {
+                            Ok(manifest) => {
+                                let output = serde_json::to_string_pretty(&manifest).unwrap_or_default();
+                                println!("{}", output);
+                            }
+                            Err(e) => { print_error(&e); std::process::exit(1); }
+                        }
+                    }
+                    Err(e) => { print_error(&e); std::process::exit(1); }
+                }
+                return;
+            }
+            "cascade" => {
+                let url = site_matches.get_one::<String>("url").unwrap();
+
+                let mut bridge = opencli_rs_browser::BrowserBridge::new(
+                    std::env::var("OPENCLI_DAEMON_PORT").ok()
+                        .and_then(|s| s.parse().ok()).unwrap_or(19825),
+                );
+                match bridge.connect().await {
+                    Ok(page) => {
+                        match opencli_rs_ai::cascade(page.as_ref(), url).await {
+                            Ok(result) => {
+                                let output = serde_json::to_string_pretty(&result).unwrap_or_default();
+                                println!("{}", output);
+                            }
+                            Err(e) => { print_error(&e); std::process::exit(1); }
+                        }
+                    }
+                    Err(e) => { print_error(&e); std::process::exit(1); }
+                }
+                return;
+            }
+            "generate" => {
+                let url = site_matches.get_one::<String>("url").unwrap();
+                let goal = site_matches.get_one::<String>("goal").cloned();
+                let site = site_matches.get_one::<String>("site").cloned();
+
+                let mut bridge = opencli_rs_browser::BrowserBridge::new(
+                    std::env::var("OPENCLI_DAEMON_PORT").ok()
+                        .and_then(|s| s.parse().ok()).unwrap_or(19825),
+                );
+                match bridge.connect().await {
+                    Ok(page) => {
+                        match opencli_rs_ai::generate(page.as_ref(), url, goal.as_deref().unwrap_or("")).await {
+                            Ok(candidate) => {
+                                // Save to ~/.opencli-rs/adapters/{site}/{name}.yaml
+                                let home = std::env::var("HOME")
+                                    .or_else(|_| std::env::var("USERPROFILE"))
+                                    .unwrap_or_else(|_| ".".to_string());
+                                let dir = std::path::PathBuf::from(&home)
+                                    .join(".opencli-rs")
+                                    .join("adapters")
+                                    .join(&candidate.site);
+                                let _ = std::fs::create_dir_all(&dir);
+                                let path = dir.join(format!("{}.yaml", candidate.name));
+                                match std::fs::write(&path, &candidate.yaml) {
+                                    Ok(_) => {
+                                        eprintln!("✅ Generated adapter: {} {}", candidate.site, candidate.name);
+                                        eprintln!("   Strategy: {:?}, Confidence: {:.0}%", candidate.strategy, candidate.confidence * 100.0);
+                                        eprintln!("   Saved to: {}", path.display());
+                                        eprintln!();
+                                        eprintln!("   Run it now:");
+                                        eprintln!("   opencli-rs {} {}", candidate.site, candidate.name);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Generated adapter but failed to save: {}", e);
+                                        eprintln!();
+                                        println!("{}", candidate.yaml);
+                                    }
+                                }
+                            }
+                            Err(e) => { print_error(&e); std::process::exit(1); }
+                        }
+                    }
+                    Err(e) => { print_error(&e); std::process::exit(1); }
+                }
+                return;
             }
             _ => {}
         }

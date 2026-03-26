@@ -88,7 +88,7 @@ pub struct TabInfo {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkRequest {
     pub url: String,
     pub method: String,
