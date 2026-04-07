@@ -42,6 +42,38 @@
   let generatedDone = false; // true after successful generate, reset on entry changes
   const COLORS = ['#ff571a','#4ecdc4','#45b7d1','#ffd93d','#a29bfe','#fd79a8','#96ceb4','#ff8a5c','#88d8b0','#c9b1ff'];
 
+  // ─── i18n ─────────────────────────────────────────────────────
+  let lang = navigator.language.startsWith('zh') ? 'zh' : 'en';
+  const i = {
+    get selector() { return lang==='zh' ? '选择器' : 'Selector'; },
+    get newEntry() { return lang==='zh' ? '+ 新条目' : '+ New Entry'; },
+    get save() { return lang==='zh' ? '保存' : 'Save'; },
+    get edit() { return lang==='zh' ? '编辑' : 'Edit'; },
+    get discard() { return lang==='zh' ? '撤销' : 'Discard'; },
+    get pick() { return lang==='zh' ? '选取' : 'Pick'; },
+    get generate() { return lang==='zh' ? '通过 AutoCLI.ai 生成' : 'Generate with AutoCLI.ai'; },
+    get done() { return lang==='zh' ? '已完成' : 'Done'; },
+    get cleaning() { return lang==='zh' ? '正在清洗页面...' : 'Cleaning DOM...'; },
+    get analyzing() { return lang==='zh' ? 'AI 分析中...' : 'AI Analyzing...'; },
+    get noEntries() { return lang==='zh' ? '暂无条目' : 'No entries yet'; },
+    get statusInit() { return lang==='zh' ? '创建条目并选取页面元素来构建选择器。' : 'Create entries and pick elements to build selectors.'; },
+    get statusPicking() { return lang==='zh' ? '点击页面中的元素（2个以上相似元素可自动检测模式）' : 'Click elements on the page (2+ similar items to detect pattern)'; },
+    get stopped() { return lang==='zh' ? '已停止' : 'Stopped'; },
+    get picking() { return lang==='zh' ? '选取中' : 'picking'; },
+    get saved() { return lang==='zh' ? '已保存' : 'saved'; },
+    get matched() { return lang==='zh' ? '匹配' : 'matched'; },
+    get columns() { return lang==='zh' ? '数据列' : 'Columns'; },
+    get usage() { return lang==='zh' ? '使用方式' : 'Usage'; },
+    get copy() { return lang==='zh' ? '复制' : 'copy'; },
+    get viewOn() { return lang==='zh' ? '在 autocli.ai 查看 →' : '${i.viewOn}'; },
+    get synced() { return lang==='zh' ? '配置已同步保存到本地和云端，可直接使用' : 'Saved locally & synced to cloud. Ready to use.'; },
+    get emptyResponse() { return lang==='zh' ? 'AI 返回了空内容' : i.emptyResponse; },
+    get limitReached() { return lang==='zh' ? '已达到使用限制' : 'Limit Reached'; },
+    get learnMore() { return lang==='zh' ? '前往 autocli.ai 了解更多 →' : 'Learn more at autocli.ai →'; },
+    get pickingFor() { return lang==='zh' ? '正在为以下条目选取：' : 'Picking for'; },
+    get escHint() { return lang==='zh' ? 'ESC 停止选取 · 点击选择器复制' : 'ESC stop picking · click selector to copy'; },
+  };
+
   // ─── Shrink page ──────────────────────────────────────────────
   window.__ospOrigMarginRight = document.body.style.marginRight;
   window.__ospOrigOverflowX = document.body.style.overflowX;
@@ -99,6 +131,24 @@
         cursor:pointer; color:#5d5f5f; font-size:13px; transition:border-color 0.2s;
       }
       .icon-btn:hover { border-color:#ff571a; color:#0f1112; }
+      .lang-wrap { position:relative; }
+      .icon-btn.lang {
+        width:auto; padding:0 6px; gap:3px;
+        font-size:10px; font-family:'JetBrains Mono',monospace;
+      }
+      .lang-code { font-size:10px; font-weight:600; }
+      .lang-menu {
+        display:none; position:absolute; top:100%; right:0; margin-top:4px;
+        background:#fff; border:1px solid #e2e2e2; min-width:100px; z-index:10;
+        box-shadow:0 2px 8px rgba(0,0,0,0.08);
+      }
+      .lang-menu.open { display:block; }
+      .lang-opt {
+        padding:6px 10px; font-size:11px; cursor:pointer;
+        font-family:'Satoshi',sans-serif; color:#5d5f5f;
+      }
+      .lang-opt:hover { background:#f0f1f1; color:#0f1112; }
+      .lang-opt.active { color:#ff571a; font-weight:600; }
 
       /* Body */
       .body { padding:12px 16px; flex:1; overflow-y:auto; padding-bottom:60px; }
@@ -308,6 +358,20 @@
         font-size:10px; color:#aaabab; font-family:'JetBrains Mono',monospace;
       }
       .sum-synced .check { color:#00cc66; }
+      .gen-notice {
+        font-size:10px; margin-bottom:8px; padding:8px 10px;
+        border:1px solid #e2e2e2; background:#fff;
+        font-family:'JetBrains Mono',monospace; line-height:1.4;
+      }
+      .gen-notice.warn { border-color:#ff571a; background:rgba(255,87,26,0.04); color:#ff571a; }
+      .gen-notice.info { border-color:#4ecdc4; background:rgba(78,205,196,0.04); color:#0f1112; }
+      .gen-notice .notice-title { font-weight:600; margin-bottom:2px; display:flex; align-items:center; gap:5px; }
+      .notice-bar { width:3px; height:12px; flex-shrink:0; }
+      .notice-bar.warn { background:#ff571a; }
+      .notice-bar.info { background:#4ecdc4; }
+      .gen-notice .notice-link { color:#ff571a; text-decoration:none; }
+      .gen-notice .notice-link:hover { text-decoration:underline; }
+      .gen-notice code { background:#f0f1f1; padding:1px 4px; font-size:10px; }
       .generate-error {
         font-size:11px; margin-bottom:8px; padding:8px 10px;
         border:1px solid #ff571a; background:rgba(255,87,26,0.04);
@@ -341,7 +405,17 @@
       <div class="header">
         <a class="logo" id="s-logo" href="#" title="Open autocli.ai"><span class="logo-mark"></span>Auto<span class="logo-cli">CLI</span><span class="logo-s">.ai</span></a>
         <span class="header-sep">/</span>
-        <span class="header-sub">Selector</span>
+        <span class="header-sub" id="s-header-sub">Selector</span>
+        <div class="lang-wrap" id="s-lang-wrap">
+          <button class="icon-btn lang" id="s-lang" title="Switch language">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span class="lang-code" id="s-lang-code">EN</span>
+          </button>
+          <div class="lang-menu" id="s-lang-menu">
+            <div class="lang-opt" data-lang="en">English</div>
+            <div class="lang-opt" data-lang="zh">中文</div>
+          </div>
+        </div>
         <button class="icon-btn" id="s-close" title="Close">✕</button>
       </div>
       <div class="body">
@@ -357,6 +431,8 @@
         <div class="generate-summary" id="s-gen-summary" style="display:none;"></div>
       </div>
       <div class="footer" id="s-sec-generate">
+        <div class="gen-notice" id="s-daemon-notice" style="display:none;"></div>
+        <div class="gen-notice" id="s-update-notice" style="display:none;"></div>
         <div class="generate-error" id="s-gen-error" style="display:none;"></div>
         <div class="gen-ratelimit" id="s-gen-rl" style="display:none;"></div>
         <button class="btn-generate" id="s-generate" disabled>Generate Adapter with AI</button>
@@ -377,6 +453,55 @@
   const genSummary = q('s-gen-summary');
   const genError = q('s-gen-error');
   const genRateLimit = q('s-gen-rl');
+  const daemonNotice = q('s-daemon-notice');
+  const updateNotice = q('s-update-notice');
+  const langBtn = q('s-lang');
+  const headerSub = q('s-header-sub');
+  const addBtn = q('s-add');
+  const helpEl = shadow.querySelector('.help');
+
+  const langCodeEl = q('s-lang-code');
+  const langMenu = q('s-lang-menu');
+
+  langCodeEl.textContent = lang.toUpperCase();
+
+  // Toggle dropdown
+  langBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    langMenu.classList.toggle('open');
+  });
+
+  // Close dropdown on outside click
+  shadow.addEventListener('click', () => { langMenu.classList.remove('open'); });
+
+  // Language options
+  langMenu.querySelectorAll('.lang-opt').forEach(opt => {
+    opt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      lang = opt.dataset.lang;
+      langCodeEl.textContent = lang.toUpperCase();
+      langMenu.classList.remove('open');
+      // Update active state
+      langMenu.querySelectorAll('.lang-opt').forEach(o => o.classList.remove('active'));
+      opt.classList.add('active');
+      refreshUI();
+    });
+  });
+
+  // Set initial active
+  langMenu.querySelector(`[data-lang="${lang}"]`)?.classList.add('active');
+
+  function refreshUI() {
+    headerSub.textContent = i.selector;
+    addBtn.textContent = i.newEntry;
+    emptyEl.innerHTML = `<b>${i.noEntries}</b>`;
+    if (helpEl) helpEl.innerHTML = `<b>ESC</b> ${lang==='zh' ? '停止选取 · 点击选择器复制' : 'stop picking · click selector to copy'}`;
+    if (mode === 'idle' && !generatedDone) setStatus(i.statusInit, '');
+    updateGenButton();
+    render();
+  }
+
+  // lang toggle handled by dropdown above
 
   function setStatus(h, t) { statusEl.innerHTML = h; statusEl.className = 'status'+(t?' '+t:''); }
   function showToast(t) { toastEl.textContent=t||'copied'; toastEl.style.display='block'; setTimeout(()=>toastEl.style.display='none',1000); }
@@ -444,7 +569,7 @@
     if (!e) return;
     e.saved = true;
     if (activeEntryId===id) { activeEntryId=null; mode='idle'; hideHover(); }
-    setStatus(`<b>${esc(e.name)}</b> saved`, 'success');
+    setStatus(`<b>${esc(e.name)}</b> ${i.saved}`, 'success');
     render(); updateExport();
   }
 
@@ -478,7 +603,7 @@
     if (activeEntryId===id) { activeEntryId=null; mode='idle'; hideHover(); }
     // Re-highlight restored elements
     e.elements.forEach(el => addHighlight(el, e.color, e.name, e.id));
-    setStatus(`<b>${esc(e.name)}</b> changes discarded`, '');
+    setStatus(`<b>${esc(e.name)}</b> ${lang==='zh'?'已撤销':'discarded'}`, '');
     render(); updateExport();
   }
 
@@ -487,7 +612,7 @@
     if (!e || e.saved) return;
     activeEntryId = id;
     mode = 'picking';
-    setStatus(`Picking for <b>${esc(e.name)}</b>`, '');
+    setStatus(`${i.pickingFor} <b>${esc(e.name)}</b>`, '');
     render();
   }
 
@@ -520,11 +645,11 @@
     }).filter(Boolean);
     if (entry.matchCount > 3) sampleLines.push('…');
     entry.sample = sampleLines.join('\n');
-    setStatus(`<b>${esc(entry.name)}</b> — ${entry.matchCount} matched`, 'success');
+    setStatus(`<b>${esc(entry.name)}</b> — ${entry.matchCount} ${i.matched}`, 'success');
     render(); updateExport();
   }
 
-  function stopPicking() { mode='idle'; activeEntryId=null; hideHover(); setStatus('Stopped',''); render(); }
+  function stopPicking() { mode='idle'; activeEntryId=null; hideHover(); setStatus(i.stopped,''); render(); }
 
   // ─── Render ───────────────────────────────────────────────────
   function render() {
@@ -573,16 +698,16 @@
 
       if (isActive) {
         const tag = document.createElement('span');
-        tag.className = 'tag tag-picking'; tag.textContent = 'picking';
+        tag.className = 'tag tag-picking'; tag.textContent = i.picking;
         tagsDiv.appendChild(tag);
       } else if (entry.saved) {
         const tag = document.createElement('span');
-        tag.className = 'tag tag-saved'; tag.textContent = 'saved';
+        tag.className = 'tag tag-saved'; tag.textContent = i.saved;
         tagsDiv.appendChild(tag);
       }
       if (entry.matchCount > 0) {
         const tag = document.createElement('span');
-        tag.className = 'tag'; tag.textContent = entry.matchCount + ' matched';
+        tag.className = 'tag'; tag.textContent = entry.matchCount + ' ' + i.matched;
         tagsDiv.appendChild(tag);
       }
 
@@ -593,20 +718,20 @@
 
       if (entry.saved) {
         const b = document.createElement('button');
-        b.className = 'btn btn-sm btn-edit'; b.textContent = 'Edit';
+        b.className = 'btn btn-sm btn-edit'; b.textContent = i.edit;
         b.addEventListener('click', e => { e.stopPropagation(); editEntry(entry.id); });
         actions.appendChild(b);
       } else {
         if (!isActive) {
           const b = document.createElement('button');
-          b.className = 'btn btn-sm'; b.textContent = 'Pick';
+          b.className = 'btn btn-sm'; b.textContent = i.pick;
           b.addEventListener('click', e => { e.stopPropagation(); activateEntry(entry.id); });
           actions.appendChild(b);
         }
         // Save button moved to entry bottom
         if (snapshots.has(entry.id)) {
           const b = document.createElement('button');
-          b.className = 'btn btn-sm btn-danger'; b.textContent = 'Discard';
+          b.className = 'btn btn-sm btn-danger'; b.textContent = i.discard;
           b.addEventListener('click', e => { e.stopPropagation(); discardEntry(entry.id); });
           actions.appendChild(b);
         }
@@ -644,7 +769,7 @@
           saveBar.className = 'entry-save-bar';
           const saveBtn = document.createElement('button');
           saveBtn.className = 'btn-entry-save';
-          saveBtn.textContent = 'Save';
+          saveBtn.textContent = i.save;
           saveBtn.addEventListener('click', e => { e.stopPropagation(); saveEntry(entry.id); });
           saveBar.appendChild(saveBtn);
           card.appendChild(saveBar);
@@ -677,14 +802,14 @@
   function updateGenButton() {
     if (generatedDone) {
       genBtn.disabled = true;
-      genBtn.textContent = 'Done';
+      genBtn.textContent = i.done;
       genBtn.classList.remove('loading');
       return;
     }
     const hasSaved = entries.some(e => e.saved && e.selector);
     const hasUnsaved = entries.some(e => !e.saved && e.selector);
     genBtn.disabled = !hasSaved || hasUnsaved;
-    genBtn.textContent = 'Generate Adapter with AI';
+    genBtn.textContent = i.generate;
   }
 
   function resetGenerated() {
@@ -712,7 +837,7 @@
     if (!exportData) return;
 
     genBtn.disabled = true;
-    genBtn.textContent = 'Cleaning DOM...';
+    genBtn.textContent = i.cleaning;
     genBtn.classList.add('loading');
     genStream.style.display = 'block';
     genStream.textContent = '';
@@ -736,7 +861,7 @@
         domTree = document.documentElement.outerHTML.substring(0, 30000);
       }
 
-      genBtn.textContent = 'Analyzing...';
+      genBtn.textContent = i.analyzing;
 
       // Step 2: Build request
       const capturedData = {
@@ -762,14 +887,14 @@
             const parsed = JSON.parse(errText);
             msg = parsed.error?.message || parsed.detail || errText;
           } catch(e) {}
-          const isZh = navigator.language.startsWith('zh');
+          
           genStream.classList.remove('active');
           genStream.style.display = 'none';
           genRateLimit.style.display = 'block';
           genRateLimit.innerHTML = `
-            <div class="gen-rl-header"><span class="gen-rl-bar"></span><span class="gen-rl-title">${isZh ? '已达到使用限制' : 'Limit Reached'}</span></div>
+            <div class="gen-rl-header"><span class="gen-rl-bar"></span><span class="gen-rl-title">${i.limitReached}</span></div>
             <div class="gen-rl-msg">${esc(msg)}</div>
-            <a class="gen-rl-link" href="https://www.autocli.ai" target="_blank">${isZh ? '前往 autocli.ai 了解更多 →' : 'Learn more at autocli.ai →'}</a>
+            <a class="gen-rl-link" href="https://www.autocli.ai" target="_blank">${i.learnMore}</a>
           `;
           return;
         }
@@ -810,7 +935,7 @@
       genStream.style.display = 'none';
 
       if (!fullContent) {
-        genError.textContent = 'AI returned empty response';
+        genError.textContent = i.emptyResponse;
         genError.style.display = 'block';
         return;
       }
@@ -856,16 +981,16 @@
         ${description ? `<div class="sum-desc">${esc(description)}</div>` : ''}
         ${domain ? `<div class="sum-meta"><span class="sum-tag accent">${esc(domain)}</span></div>` : ''}
         ${colTags ? `
-          <div class="sum-section-title">Columns</div>
+          <div class="sum-section-title">${i.columns}</div>
           <div class="sum-columns">${colTags}</div>
         ` : ''}
-        <div class="sum-section-title">Usage</div>
+        <div class="sum-section-title">${i.usage}</div>
         <div class="sum-cmd" title="Click to copy">
           <span class="sum-cmd-text">${cmdHtml}</span>
-          <span class="sum-cmd-copy">copy</span>
+          <span class="sum-cmd-copy">${i.copy}</span>
         </div>
-        <a class="sum-link" href="https://www.autocli.ai" target="_blank">View on autocli.ai →</a>
-        <div class="sum-synced"><span class="check">✓</span> ${navigator.language.startsWith('zh') ? '配置已同步保存到本地和云端，可直接使用' : 'Saved locally & synced to cloud. Ready to use.'}</div>
+        <a class="sum-link" href="https://www.autocli.ai" target="_blank">${i.viewOn}</a>
+        <div class="sum-synced"><span class="check">✓</span> ${i.synced}</div>
       `;
 
       genSummary.querySelector('.sum-cmd')?.addEventListener('click', () => copyText(cmd));
@@ -882,7 +1007,7 @@
     } finally {
       if (!generatedDone) {
         genBtn.disabled = false;
-        genBtn.textContent = 'Generate Adapter with AI';
+        genBtn.textContent = i.generate;
       }
       genBtn.classList.remove('loading');
     }
@@ -896,5 +1021,41 @@
     document.body.style.overflowX = window.__ospOrigOverflowX||'';
   });
 
+  // ─── Startup checks ────────────────────────────────────────────
+  (async () => {
+    const DAEMON_PORT = 19925;
+    const isZh = () => lang === 'zh';
+
+    // Check daemon connection
+    try {
+      const resp = await fetch(`http://localhost:${DAEMON_PORT}/ping`, { signal: AbortSignal.timeout(2000) });
+      if (!resp.ok) throw new Error();
+    } catch(e) {
+      daemonNotice.className = 'gen-notice warn';
+      daemonNotice.innerHTML = isZh()
+        ? `<div class="notice-title"><span class="notice-bar warn"></span>未连接到 AutoCLI</div>请运行 <code>autocli</code> 启动服务后重试。`
+        : `<div class="notice-title"><span class="notice-bar warn"></span>AutoCLI not connected</div>Run <code>autocli</code> to start the daemon and try again.`;
+      daemonNotice.style.display = 'block';
+      return;
+    }
+
+    // Check for updates
+    try {
+      const resp = await fetch(`http://localhost:${DAEMON_PORT}/check-update`, { signal: AbortSignal.timeout(3000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.update_available) {
+          updateNotice.className = 'gen-notice info';
+          const dl = data.download_url || 'https://github.com/nashsu/AutoCLI/releases';
+          updateNotice.innerHTML = isZh()
+            ? `<div class="notice-title"><span class="notice-bar info"></span>新版本可用: ${esc(data.latest_version)}</div>当前版本: ${esc(data.current_version)} · <a class="notice-link" href="${esc(dl)}" target="_blank">前往下载 →</a>`
+            : `<div class="notice-title"><span class="notice-bar info"></span>Update available: ${esc(data.latest_version)}</div>Current: ${esc(data.current_version)} · <a class="notice-link" href="${esc(dl)}" target="_blank">Download →</a>`;
+          updateNotice.style.display = 'block';
+        }
+      }
+    } catch(e) { /* ignore update check failures */ }
+  })();
+
+  refreshUI();
   console.log('[autocli-selector] Loaded');
 })();

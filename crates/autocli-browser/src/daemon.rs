@@ -76,6 +76,7 @@ impl Daemon {
             .route("/status", get(status_handler))
             .route("/command", post(command_handler))
             .route("/ai-generate", post(ai_generate_proxy_handler))
+            .route("/check-update", get(check_update_handler))
             .route("/ext", get(ws_handler))
             .layer(cors)
             .with_state(state.clone());
@@ -88,8 +89,13 @@ impl Daemon {
 
         info!(port, "daemon listening");
 
-        // Daemon runs permanently — no idle shutdown
-        let _idle_state = state.clone();
+        // Spawn hourly update checker
+        tokio::spawn(async {
+            loop {
+                check_and_cache_update().await;
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
 
         // Spawn the server
         tokio::spawn(async move {
@@ -124,7 +130,7 @@ impl Daemon {
 
 /// GET /health — simple liveness check.
 async fn health_handler() -> impl IntoResponse {
-    (StatusCode::OK, "ok")
+    Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }))
 }
 
 /// POST /ai-generate — proxy AI request to autocli.ai with local token.
@@ -535,6 +541,65 @@ async fn handle_extension_ws(state: Arc<DaemonState>, socket: WebSocket) {
             id,
             "Extension disconnected".to_string(),
         ));
+    }
+}
+
+// ─── Update check ───────────────────────────────────────────────
+
+static CACHED_UPDATE: std::sync::OnceLock<tokio::sync::RwLock<Option<serde_json::Value>>> = std::sync::OnceLock::new();
+
+fn update_cache() -> &'static tokio::sync::RwLock<Option<serde_json::Value>> {
+    CACHED_UPDATE.get_or_init(|| tokio::sync::RwLock::new(None))
+}
+
+async fn check_and_cache_update() {
+    let api_base = std::env::var("AUTOCLI_API_BASE")
+        .unwrap_or_else(|_| "https://www.autocli.ai".to_string());
+    let url = format!("{}/api/version/latest", api_base.trim_end_matches('/'));
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            if let Ok(data) = resp.json::<serde_json::Value>().await {
+                let current = env!("CARGO_PKG_VERSION");
+                let latest = data.get("version").and_then(|v| v.as_str()).unwrap_or("");
+                let latest_clean = latest.strip_prefix('v').unwrap_or(latest);
+
+                let mut cached = json!({
+                    "current_version": current,
+                    "latest_version": latest,
+                    "download_url": data.get("download_url").and_then(|v| v.as_str()).unwrap_or(""),
+                    "published_at": data.get("published_at").and_then(|v| v.as_str()).unwrap_or(""),
+                    "update_available": latest_clean != current,
+                });
+
+                *update_cache().write().await = Some(cached);
+                tracing::debug!(current, latest, "Update check completed");
+            }
+        }
+        _ => {
+            tracing::debug!("Update check failed");
+        }
+    }
+}
+
+/// GET /check-update — returns cached update info
+async fn check_update_handler() -> impl IntoResponse {
+    let cache = update_cache().read().await;
+    match &*cache {
+        Some(data) => (StatusCode::OK, Json(data.clone())),
+        None => (StatusCode::OK, Json(json!({
+            "current_version": env!("CARGO_PKG_VERSION"),
+            "latest_version": "",
+            "update_available": false,
+        }))),
     }
 }
 

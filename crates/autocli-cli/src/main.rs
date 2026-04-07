@@ -184,6 +184,39 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
     Ok(())
 }
 
+/// Kill the process listening on a given port.
+fn kill_process_on_port(port: u16) {
+    if cfg!(target_os = "windows") {
+        // Windows: use netstat to find PID, then taskkill
+        let netstat = std::process::Command::new("netstat")
+            .args(["-ano"])
+            .output();
+        if let Ok(output) = netstat {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains(&format!(":{}", port)) && line.contains("LISTENING") {
+                    if let Some(pid) = line.split_whitespace().last() {
+                        let _ = std::process::Command::new("taskkill")
+                            .args(["/PID", pid, "/F"])
+                            .output();
+                        tracing::debug!(port, pid, "Killed old daemon (Windows)");
+                        return;
+                    }
+                }
+            }
+        }
+    } else {
+        // macOS/Linux: lsof + kill
+        let output = std::process::Command::new("sh")
+            .args(["-c", &format!("lsof -ti tcp:{} | xargs kill -9 2>/dev/null", port)])
+            .output();
+        match output {
+            Ok(o) => tracing::debug!(port, stdout = %String::from_utf8_lossy(&o.stdout), "Killed old daemon"),
+            Err(e) => tracing::warn!(port, error = %e, "Failed to kill old daemon"),
+        }
+    }
+}
+
 fn save_adapter(site: &str, name: &str, yaml: &str) {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
@@ -440,27 +473,42 @@ async fn main() {
         return;
     }
 
-    // 1.5. Ensure daemon is running in background
+    // 1.5. Ensure daemon is running with correct version
     {
         let port: u16 = std::env::var("AUTOCLI_DAEMON_PORT")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(19925);
+        let current_version = env!("CARGO_PKG_VERSION");
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(1))
             .build()
             .ok();
-        let daemon_running = if let Some(c) = &client {
-            c.get(&format!("http://127.0.0.1:{}/ping", port))
-                .send()
-                .await
-                .map(|r| r.status().is_success())
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        if !daemon_running {
-            // Spawn daemon as background process
+
+        let mut need_start = true;
+
+        if let Some(c) = &client {
+            if let Ok(resp) = c.get(&format!("http://127.0.0.1:{}/ping", port)).send().await {
+                if resp.status().is_success() {
+                    // Daemon is running — check version
+                    if let Ok(body) = resp.json::<serde_json::Value>().await {
+                        let daemon_version = body.get("version").and_then(|v| v.as_str()).unwrap_or("");
+                        if daemon_version == current_version {
+                            need_start = false;
+                            tracing::debug!(port, version = daemon_version, "Daemon already running with correct version");
+                        } else {
+                            tracing::info!(daemon_version, current_version, "Daemon version mismatch, restarting");
+                            // Kill old daemon by requesting shutdown, or find and kill process on the port
+                            kill_process_on_port(port);
+                            // Wait briefly for port to free up
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        if need_start {
             if let Ok(exe) = std::env::current_exe() {
                 let child = tokio::process::Command::new(exe)
                     .arg("--daemon")
@@ -469,8 +517,35 @@ async fn main() {
                     .stderr(std::process::Stdio::null())
                     .spawn();
                 if let Ok(c) = child {
-                    std::mem::forget(c); // detach
-                    tracing::debug!(port, "Spawned daemon in background");
+                    std::mem::forget(c);
+                    tracing::debug!(port, version = current_version, "Spawned daemon in background");
+                }
+            }
+        }
+    }
+
+    // 1.6. Check for updates (only show for non-format output)
+    {
+        let format_arg = std::env::args().any(|a| a == "--format" || a == "-f");
+        if !format_arg {
+            let port: u16 = std::env::var("AUTOCLI_DAEMON_PORT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(19925);
+            if let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(1)).build() {
+                if let Ok(resp) = client.get(&format!("http://127.0.0.1:{}/check-update", port)).send().await {
+                    if let Ok(data) = resp.json::<serde_json::Value>().await {
+                        if data.get("update_available").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            let latest = data.get("latest_version").and_then(|v| v.as_str()).unwrap_or("");
+                            let current = data.get("current_version").and_then(|v| v.as_str()).unwrap_or("");
+                            let dl = data.get("download_url").and_then(|v| v.as_str()).unwrap_or("");
+                            eprintln!("{}", t(
+                                &format!("💡 新版本可用: {} (当前: {}) → {}", latest, current, dl),
+                                &format!("💡 Update available: {} (current: {}) → {}", latest, current, dl),
+                            ));
+                            eprintln!();
+                        }
+                    }
                 }
             }
         }
