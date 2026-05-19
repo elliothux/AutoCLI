@@ -39,7 +39,19 @@ impl BrowserBridge {
     pub async fn connect_daemon_page(&mut self) -> Result<Arc<DaemonPage>, CliError> {
         let client = Arc::new(DaemonClient::new(self.port));
 
-        // Step 1: Ensure daemon is running
+        // Step 1: Check Chrome is running
+        if !is_chrome_running() {
+            return Err(CliError::BrowserConnect {
+                message: "Chrome is not running".into(),
+                suggestions: vec![
+                    "Please open Google Chrome with the OpenCLI extension installed".into(),
+                    "The extension connects to the daemon automatically when Chrome is open".into(),
+                ],
+                source: None,
+            });
+        }
+
+        // Step 2: Ensure daemon is running
         if client.is_running().await {
             debug!(port = self.port, "daemon already running, reusing");
         } else {
@@ -48,17 +60,17 @@ impl BrowserBridge {
             self.wait_for_ready(&client).await?;
         }
 
-        // Step 2: Wait up to 5s for extension to connect
+        // Step 3: Wait up to 5s for extension to connect
         if self.poll_extension(&client, EXTENSION_INITIAL_WAIT, false).await {
             return Ok(Arc::new(DaemonPage::new(client, "default")));
         }
 
-        // Step 3: Extension not connected — try to wake up Chrome
+        // Step 4: Extension not connected — try to wake up Chrome
         info!("Extension not connected after 5s, attempting to wake up Chrome");
-        eprintln!("Waking up browser extension...");
+        eprintln!("Waking up Chrome extension...");
         wake_chrome();
 
-        // Step 4: Wait remaining 25s with progress
+        // Step 5: Wait remaining 25s with progress
         if self.poll_extension(&client, EXTENSION_REMAINING_WAIT, true).await {
             return Ok(Arc::new(DaemonPage::new(client, "default")));
         }
@@ -67,9 +79,8 @@ impl BrowserBridge {
         Err(CliError::BrowserConnect {
             message: "Chrome extension not connected".into(),
             suggestions: vec![
-                "Make sure ClawPaw Helper is installed and enabled in your Chromium browser"
-                    .into(),
-                "Try opening a new browser window manually".into(),
+                "Make sure the OpenCLI Chrome extension is installed and enabled".into(),
+                "Try opening a new Chrome window manually".into(),
                 format!("The daemon is listening on port {}", self.port),
             ],
             source: None,
@@ -153,6 +164,36 @@ impl BrowserBridge {
             "Daemon did not become ready within {}s",
             READY_TIMEOUT.as_secs()
         )))
+    }
+}
+
+/// Check if Chrome/Chromium is running as a process.
+fn is_chrome_running() -> bool {
+    if cfg!(target_os = "macos") {
+        // macOS: check for "Google Chrome" process
+        std::process::Command::new("pgrep")
+            .args(["-x", "Google Chrome"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else if cfg!(target_os = "windows") {
+        // Windows: check for chrome.exe
+        std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq chrome.exe", "/NH"])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains("chrome.exe"))
+            .unwrap_or(false)
+    } else {
+        // Linux: check for chrome or chromium
+        std::process::Command::new("pgrep")
+            .args(["-x", "chrome|chromium"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
     }
 }
 
