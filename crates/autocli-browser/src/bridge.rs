@@ -12,6 +12,15 @@ const READY_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const EXTENSION_INITIAL_WAIT: Duration = Duration::from_secs(5);
 const EXTENSION_REMAINING_WAIT: Duration = Duration::from_secs(25);
 const EXTENSION_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const MACOS_BROWSER_PROCESS_NAMES: &[&str] = &[
+    "Google Chrome",
+    "Google Chrome Beta",
+    "Google Chrome Dev",
+    "Chromium",
+    "Arc",
+    "Brave Browser",
+    "Microsoft Edge",
+];
 
 /// High-level bridge that manages the Daemon process and provides IPage instances.
 /// The daemon runs as a detached background process with its own idle-shutdown lifecycle.
@@ -61,7 +70,10 @@ impl BrowserBridge {
         }
 
         // Step 3: Wait up to 5s for extension to connect
-        if self.poll_extension(&client, EXTENSION_INITIAL_WAIT, false).await {
+        if self
+            .poll_extension(&client, EXTENSION_INITIAL_WAIT, false)
+            .await
+        {
             return Ok(Arc::new(DaemonPage::new(client, "default")));
         }
 
@@ -71,7 +83,10 @@ impl BrowserBridge {
         wake_chrome();
 
         // Step 5: Wait remaining 25s with progress
-        if self.poll_extension(&client, EXTENSION_REMAINING_WAIT, true).await {
+        if self
+            .poll_extension(&client, EXTENSION_REMAINING_WAIT, true)
+            .await
+        {
             return Ok(Arc::new(DaemonPage::new(client, "default")));
         }
 
@@ -170,14 +185,9 @@ impl BrowserBridge {
 /// Check if Chrome/Chromium is running as a process.
 fn is_chrome_running() -> bool {
     if cfg!(target_os = "macos") {
-        // macOS: check for "Google Chrome" process
-        std::process::Command::new("pgrep")
-            .args(["-x", "Google Chrome"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+        MACOS_BROWSER_PROCESS_NAMES
+            .iter()
+            .any(|name| is_macos_process_running(name))
     } else if cfg!(target_os = "windows") {
         // Windows: check for chrome.exe
         std::process::Command::new("tasklist")
@@ -202,8 +212,13 @@ fn is_chrome_running() -> bool {
 /// Opening a window activates the Service Worker, which then reconnects to the daemon.
 fn wake_chrome() {
     let result = if cfg!(target_os = "macos") {
+        let app_name = MACOS_BROWSER_PROCESS_NAMES
+            .iter()
+            .find(|name| is_macos_process_running(name))
+            .copied()
+            .unwrap_or("Google Chrome");
         std::process::Command::new("open")
-            .args(["-a", "Google Chrome", "about:blank"])
+            .args(["-a", app_name, "about:blank"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -226,6 +241,17 @@ fn wake_chrome() {
         Ok(_) => debug!("Opened Chrome window to wake extension"),
         Err(e) => debug!("Failed to open Chrome window: {e}"),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn is_macos_process_running(process_name: &str) -> bool {
+    std::process::Command::new("pgrep")
+        .args(["-x", process_name])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
